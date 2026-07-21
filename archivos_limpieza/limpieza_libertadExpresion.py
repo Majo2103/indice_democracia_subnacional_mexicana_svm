@@ -190,10 +190,10 @@ asesinos = pd.read_csv(RUTA_ASESINADOS, dtype=str, encoding="latin-1")
 asesinos.columns = asesinos.columns.str.strip()
 
 # Estado: columna 'Title'
-asesinos["state_code"] = asesinos["Title"].apply(normalizar_nombre_estado)
+asesinos["state_code"] = asesinos["estado"].apply(normalizar_nombre_estado)
 
 # Año: columna 'FECHA'
-asesinos["year"] = asesinos["FECHA"].apply(extraer_anio_asesinados)
+asesinos["year"] = asesinos["fecha"].apply(extraer_anio_asesinados)
 
 # Filtrar filas sin estado o año
 asesinos_validos = asesinos.dropna(subset=["state_code", "year"]).copy()
