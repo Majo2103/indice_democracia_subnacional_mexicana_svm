@@ -260,7 +260,7 @@ panel["num_periodistas_desaparecidos"] = panel["num_periodistas_desaparecidos"].
 columnas_finales = [
     "state_name", "state_code", "year",
     "num_periodistas_desaparecidos", "num_periodistas_asesinados",
-    "ley_transparencia", "difamacion_penal", "injurias_penal", "ultrajes_autoridad"
+    "ley_transparencia", "difamacion_penal", "injurias_penal"
 ]
 panel = panel[columnas_finales]
 panel = panel.sort_values(["state_name", "year"]).reset_index(drop=True)
