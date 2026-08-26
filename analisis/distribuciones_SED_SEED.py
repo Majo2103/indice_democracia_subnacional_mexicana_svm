@@ -157,16 +157,21 @@ ax.set_title(f"Elección anticipada  (n={len(s)}, {scope})")
 ax.spines[["top", "right"]].set_visible(False)
 plt.show()
 
-
-# %% Alternancia / turnover (0/1)
+# %% Alternancia por año (número de estados con alternancia en la elección)
 var = "turnover_head_sub_exe"
-s, scope = pick(var)
-counts = s.value_counts().sort_index()
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.bar(counts.index.astype(str), counts.values, color="#4C72B0", edgecolor="white")
-ax.set_ylabel("Frecuencia")
-ax.set_title(f"Alternancia (turnover)  (n={len(s)}, {scope})")
+d = df_events.dropna(subset=[var]).copy()          # una fila por elección
+d = d[(d["year"] >= 2000) & (d["year"] <= 2024)]   # ventana de análisis
+
+by_year = d.groupby("year")[var].sum()             # estados con alternancia por año
+by_year = by_year.reindex(range(2000, 2025), fill_value=0)  # años sin alternancia = 0
+
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.plot(by_year.index, by_year.values, marker="o", color="#4C72B0")
+ax.set_xlabel("Año"); ax.set_ylabel("Estados con alternancia")
+ax.set_title("Alternancia en la titularidad del ejecutivo por año")
+ax.set_xticks(range(2000, 2025, 2))
 ax.spines[["top", "right"]].set_visible(False)
+ax.grid(axis="y", alpha=0.3)
 plt.show()
 
 
@@ -182,16 +187,70 @@ ax.spines[["top", "right"]].set_visible(False)
 plt.show()
 
 
-# %% Años acumulados del partido (%)
+# %% Años acumulados del partido — conteo por valor entero
 var = "cumulative_years_in_power_party_sub_exe"
 s, scope = pick(var)
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.hist(s, bins=30, color="#4C72B0", edgecolor="white", alpha=0.85)
+
+counts = s.value_counts().sort_index()   # una barra por año entero
+
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.bar(counts.index, counts.values, width=0.9, color="#4C72B0", edgecolor="white")
 ax.axvline(s.mean(),   color="#B0413E", lw=1.4, ls="--", label=f"media={s.mean():.1f}")
 ax.axvline(s.median(), color="#DD8452", lw=1.4, ls=":",  label=f"mediana={s.median():.1f}")
 ax.legend(frameon=False)
 ax.set_xlabel("Años acumulados (partido)"); ax.set_ylabel("Frecuencia")
 ax.set_title(f"Años acumulados (partido)  (n={len(s)}, {scope})")
+ax.spines[["top", "right"]].set_visible(False)
+plt.show()
+
+
+# %% Años acumulados del partido, coloreado por partido
+# %% Años acumulados del partido — conteo entero, apilado por partido
+var = "cumulative_years_in_power_party_sub_exe"
+pcol = "head_party_sub_exe"
+
+d = df.dropna(subset=[var, pcol]).copy()          # panel estado-año
+scope = "panel estado-año"
+
+short = {
+    "PARTIDO REVOLUCIONARIO INSTITUCIONAL": "PRI",
+    "PARTIDO ACCIÓN NACIONAL": "PAN",
+    "PARTIDO DE LA REVOLUCIÓN DEMOCRÁTICA": "PRD",
+    "MOVIMIENTO DE REGENERACIÓN NACIONAL": "Morena",
+    "MOVIMIENTO CIUDADANO": "MC",
+    "PARTIDO VERDE ECOLOGISTA DE MÉXICO": "PVEM",
+    "PARTIDO ENCUENTRO SOCIAL": "PES",
+    "PARTIDO INDEPENDIENTE": "Indep.",
+}
+colors = {
+    "PRI": "#009150", "PAN": "#05338D", "PRD": "#FFD700",
+    "Morena": "#B5261E", "Otros": "#BBBBBB",
+}
+d["party"] = d[pcol].map(short)
+
+# Agrupar partidos pequeños en "Otros" (conserva PRI/PAN/PRD/Morena)
+principales = ["PRI", "PAN", "PRD", "Morena"]
+d["party"] = d["party"].where(d["party"].isin(principales), "Otros")
+
+# Conteo por año entero (índice) x partido (columnas)
+orden = [p for p in principales + ["Otros"] if p in d["party"].unique()]
+tab = (d.groupby([var, "party"]).size()
+         .unstack("party", fill_value=0)
+         .reindex(columns=orden, fill_value=0))
+tab = tab.reindex(range(int(d[var].min()), int(d[var].max()) + 1), fill_value=0)
+
+fig, ax = plt.subplots(figsize=(7, 4))
+bottom = np.zeros(len(tab))
+for p in orden:
+    ax.bar(tab.index, tab[p], bottom=bottom, width=0.9,
+           color=colors[p], edgecolor="white", linewidth=0.3, label=p)
+    bottom += tab[p].values
+
+ax.axvline(d[var].mean(),   color="#B0413E", lw=1.4, ls="--", label=f"media={d[var].mean():.1f}")
+ax.axvline(d[var].median(), color="#555555", lw=1.4, ls=":",  label=f"mediana={d[var].median():.1f}")
+ax.legend(frameon=False, fontsize=8)
+ax.set_xlabel("Años acumulados (partido)"); ax.set_ylabel("Frecuencia")
+ax.set_title(f"Años acumulados (partido)  (n={len(d)}, {scope})")
 ax.spines[["top", "right"]].set_visible(False)
 plt.show()
 
@@ -208,6 +267,8 @@ ax.set_xlabel("Duración del mandato (años)"); ax.set_ylabel("Frecuencia")
 ax.set_title(f"Duración del mandato (años)  (n={len(s)}, {scope})")
 ax.spines[["top", "right"]].set_visible(False)
 plt.show()
+
+
 
 
 # %% Reelección consecutiva (0/1) — constante = 0 para la gubernatura
