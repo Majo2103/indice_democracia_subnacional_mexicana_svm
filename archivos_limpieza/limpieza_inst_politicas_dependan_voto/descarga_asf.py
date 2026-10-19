@@ -12,6 +12,11 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+# Configuración predeterminada de rutas. 
+# Se pueden cambiar en la parte superior del script o mediante argumentos de línea de comandos.
+RUTA_CSV = ""
+CARPETA_SALIDA = ""
+
 
 def nombre_seguro(texto: str) -> str:
     """Convierte el nombre de la entidad a minúsculas y guiones bajos ASCII."""
@@ -44,17 +49,19 @@ def descargar(url: str, destino: Path, intentos: int = 3) -> None:
 
 def main() -> None:
     carpeta_script = Path(__file__).resolve().parent
+    csv_predeterminado = Path(RUTA_CSV).expanduser() if RUTA_CSV else carpeta_script / "enlaces_asf_recurrencia_por_entidad.csv"
+    salida_predeterminada = Path(CARPETA_SALIDA).expanduser() if CARPETA_SALIDA else carpeta_script / "pdf_asf"
     parser = argparse.ArgumentParser(description="Descarga los 32 informes de recurrencia de ASF.")
     parser.add_argument(
         "--csv",
         type=Path,
-        default=carpeta_script / "enlaces_asf_recurrencia_por_entidad.csv",
+        default=csv_predeterminado,
         help="Ruta del CSV de enlaces.",
     )
     parser.add_argument(
         "--destino",
         type=Path,
-        default=carpeta_script / "pdf_asf",
+        default=salida_predeterminada,
         help="Carpeta donde se guardarán los PDF.",
     )
     parser.add_argument("--sobrescribir", action="store_true", help="Vuelve a descargar archivos existentes.")
