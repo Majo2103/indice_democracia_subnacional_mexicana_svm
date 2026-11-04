@@ -12,7 +12,9 @@ Lee el panel (32 entidades x 2000-2024) y guarda en la carpeta de salida
     g4_auditorias.png             Auditorías de la ASF al gasto federalizado, por fuente
     g5_monto_observado.png        Monto observado nacional (pesos de 2024)
     g6_proporcion_observada.png   Monto observado / muestra auditada (mediana y rango intercuartil)
+    g6b_proporcion_media.png      Monto observado / muestra auditada (promedio simple de los estados)
     g7_monto_por_habitante.png    Monto observado por habitante (pesos de 2024)
+    g7b_extremos_por_habitante.png  Estado con el monto por habitante más alto y más bajo, cada año
     resumen_PDV.txt               Números que respaldan la descripción de cada gráfica
 
 Celdas vacías (NA): en las variables 1/0 se grafican como una banda entre el
@@ -72,11 +74,13 @@ def conteo_con_banda(p, col):
 def g1_ley_participacion(p, carpeta, res):
     mn, mx = conteo_con_banda(p, "ley_participacion_ciudadana")
     fig, ax = plt.subplots(figsize=TAM)
-    ax.fill_between(mn.index, mn, mx, color=BANDA, step="mid", label="Rango posible (fechas sin confirmar)")
+    hay_banda = (mx != mn).any()   # solo si quedan celdas vacías
+    if hay_banda:
+        ax.fill_between(mn.index, mn, mx, color=BANDA, step="mid", label="Rango posible")
     ax.step(mn.index, mn, where="mid", color=NEGRO, label="Estados con ley vigente")
     ax.set_ylim(0, 32)
     ax.set_xlim(1999.5, 2024.5)
-    ax.set_ylabel("Número de estados (de 32)")
+    ax.set_ylabel("Número de estados")
     ax.set_xticks(range(2000, 2025, 2))
     # Salidas: estados que pasan de 1 a 0
     salidas = []
@@ -89,7 +93,8 @@ def g1_ley_participacion(p, carpeta, res):
         ax.annotate(f"{ent} pierde su ley ({a})", xy=(a, mn[a] - 0.3), xytext=(a + 0.3, 6 + 5 * n),
                     ha="center", fontsize=8.5, color=GRIS_OSCURO,
                     arrowprops=dict(arrowstyle="->", color=GRIS, lw=0.8))
-    ax.legend(loc="upper left")
+    if hay_banda:
+        ax.legend(loc="upper left")
     res.append("G1. Estados con ley de participación ciudadana vigente (mín.–máx.)")
     for a in [2000, 2005, 2010, 2015, 2020, 2024]:
         res.append(f"  {a}: {mn[a]}" + (f"–{mx[a]}" if mx[a] != mn[a] else ""))
@@ -104,12 +109,13 @@ def g2_ley_vs_comite(p, carpeta, res):
     ley = q.groupby("anio")["ley_sistema_anticorrupcion"].apply(lambda s: (s == 1).sum())
     mn, mx = conteo_con_banda(q, "sistema_anticorrupcion")
     fig, ax = plt.subplots(figsize=TAM)
-    ax.fill_between(mn.index, mn, mx, color=BANDA, label="Rango posible del Comité (fechas sin confirmar)")
+    if (mx != mn).any():   # solo si quedan celdas vacías
+        ax.fill_between(mn.index, mn, mx, color=BANDA, label="Rango posible del Comité")
     ax.plot(ley.index, ley, color=GRIS, ls="--", marker="s", label="Con ley del sistema anticorrupción")
     ax.plot(mn.index, mn, color=NEGRO, marker="o", label="Con Comité Coordinador instalado")
     ax.set_ylim(0, 33)
     ax.set_xticks(range(2014, 2025))
-    ax.set_ylabel("Número de estados (de 32)")
+    ax.set_ylabel("Número de estados")
     leyenda_abajo(ax)
     res.append("G2. Estados con ley del sistema anticorrupción / con Comité Coordinador (mín.–máx.)")
     for a in range(2016, 2025):
@@ -214,6 +220,12 @@ def g5_monto(p, carpeta, res):
     return guarda(fig, carpeta, "g5_monto_observado.png")
 
 
+def techo_proporcion(p):
+    """Mismo eje vertical para G6 y G6b, para que se puedan comparar."""
+    g = p[p.anio >= 2012].groupby("anio").proporcion_observada_muestra
+    return max(g.quantile(0.75).max(), g.mean().max()) * 100 * 1.08
+
+
 def g6_proporcion(p, carpeta, res):
     q = p[p.anio >= 2012]
     g = q.groupby("anio").proporcion_observada_muestra
@@ -223,7 +235,7 @@ def g6_proporcion(p, carpeta, res):
     ax.plot(med.index, med, color=NEGRO, marker="o", label="Mediana de los estados")
     ax.set_xticks(med.index)
     ax.tick_params(axis="x", labelsize=9)
-    ax.set_ylim(0, None)
+    ax.set_ylim(0, techo_proporcion(p))
     ax.set_xlabel("Año de la cuenta pública fiscalizada")
     ax.set_ylabel("% de la muestra auditada")
     leyenda_abajo(ax, ncol=2)
@@ -231,6 +243,35 @@ def g6_proporcion(p, carpeta, res):
     for a in med.index:
         res.append(f"  {a}: {med[a]:.1f} [{p25[a]:.1f}–{p75[a]:.1f}]")
     return guarda(fig, carpeta, "g6_proporcion_observada.png")
+
+
+def g6b_proporcion_media(p, carpeta, res):
+    q = p[p.anio >= 2012].copy()
+    g = q.groupby("anio")
+    media = g.proporcion_observada_muestra.mean() * 100
+    mediana = g.proporcion_observada_muestra.median() * 100
+    # Proporción nacional (ponderada): suma de montos / suma de muestras.
+    # La muestra se recupera del panel: muestra = monto observado / proporción.
+    q["muestra_2024"] = q.monto_observado_mdp_2024 / q.proporcion_observada_muestra
+    nacional = g.monto_observado_mdp_2024.sum() / q.groupby("anio").muestra_2024.sum() * 100
+    fig, ax = plt.subplots(figsize=TAM)
+    ax.plot(media.index, media, color=NEGRO, marker="o")
+    for a in [media.index.min(), media.idxmax(), media.index.max()]:
+        ax.annotate(f"{media[a]:.1f}%", (a, media[a]), textcoords="offset points", xytext=(0, 7),
+                    ha="center", fontsize=9)
+    ax.set_xticks(media.index)
+    ax.tick_params(axis="x", labelsize=9)
+    ax.set_ylim(0, techo_proporcion(p))
+    ax.set_xlabel("Año de la cuenta pública fiscalizada")
+    ax.set_ylabel("% de la muestra auditada (promedio de los estados)")
+    res.append("G6b. Monto observado / muestra auditada (%): promedio simple de los estados")
+    res.append("     (para comparar: mediana de los estados y proporción nacional = suma montos / suma muestras)")
+    for a in media.index:
+        d = q[q.anio == a]
+        top = d.loc[d.proporcion_observada_muestra.idxmax()]
+        res.append(f"  {a}: promedio {media[a]:.1f} | mediana {mediana[a]:.1f} | nacional {nacional[a]:.1f}"
+                   f" | máximo {top.proporcion_observada_muestra * 100:.1f} ({top.entidad})")
+    return guarda(fig, carpeta, "g6b_proporcion_media.png")
 
 
 def g7_por_habitante(p, carpeta, res):
@@ -255,6 +296,40 @@ def g7_por_habitante(p, carpeta, res):
     return guarda(fig, carpeta, "g7_monto_por_habitante.png")
 
 
+def g7b_extremos(p, carpeta, res):
+    q = p[p.anio >= 2012]
+    filas = []
+    for a, d in q.groupby("anio"):
+        v = d.set_index("entidad").monto_observado_pc_2024
+        filas.append((a, v.idxmin(), v.min(), v.idxmax(), v.max()))
+    t = pd.DataFrame(filas, columns=["anio", "ent_min", "min", "ent_max", "max"]).set_index("anio")
+    x = np.arange(len(t))
+    w = 0.38
+    fig, ax = plt.subplots(figsize=(6.5, 4.6))
+    # A color (paleta categórica validada para daltonismo: azul y naranja)
+    AZUL, NARANJA = "#2a78d6", "#eb6834"
+    ax.bar(x - w / 2, t["max"], width=w, color=AZUL, label="Estado con el monto más alto")
+    ax.bar(x + w / 2, t["min"], width=w, color=NARANJA, edgecolor=NARANJA, linewidth=0.8,
+           label="Estado con el monto más bajo")
+    tope = t["max"].max()
+    for i, (a, f) in enumerate(t.iterrows()):
+        for dx, ent, val in [(-w / 2, f.ent_max, f["max"]), (w / 2, f.ent_min, f["min"])]:
+            ax.text(i + dx, val + tope * 0.015, f"{ent} ({val:,.1f})" if val < 1 else f"{ent} ({val:,.0f})", rotation=90, ha="center",
+                    va="bottom", fontsize=7, color=NEGRO)
+    ax.set_xticks(x)
+    ax.set_xticklabels(t.index, fontsize=9)
+    ax.set_ylim(0, tope * 1.32)
+    ax.yaxis.set_major_formatter(miles)
+    ax.set_xlabel("Año de la cuenta pública fiscalizada")
+    ax.set_ylabel("Pesos de 2024 por habitante")
+    leyenda_abajo(ax, ncol=2)
+    res.append("G7b. Monto observado por habitante: estado más alto y más bajo de cada año (pesos de 2024)")
+    for a, f in t.iterrows():
+        res.append(f"  {a}: máx. {f.ent_max} {f['max']:,.0f} | mín. {f.ent_min} {f['min']:,.1f}"
+                   f" | diferencia {f['max'] - f['min']:,.0f}")
+    return guarda(fig, carpeta, "g7b_extremos_por_habitante.png")
+
+
 # ---------------------------------------------------------------- principal
 def main(ruta_csv, carpeta):
     p = pd.read_csv(ruta_csv)
@@ -263,7 +338,7 @@ def main(ruta_csv, carpeta):
     carpeta.mkdir(parents=True, exist_ok=True)
     res = [f"Resumen de {Path(ruta_csv).name}", ""]
     for f in (g1_ley_participacion, g2_ley_vs_comite, g3_rezago, g4_auditorias,
-              g5_monto, g6_proporcion, g7_por_habitante):
+              g5_monto, g6_proporcion, g6b_proporcion_media, g7_por_habitante, g7b_extremos):
         ruta = f(p, carpeta, res)
         res.append(f"  -> {ruta.name}\n")
     texto = "\n".join(res)
